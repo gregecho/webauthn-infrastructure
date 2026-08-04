@@ -1,0 +1,130 @@
+###
+# WebAuthn Infrastructure - Local Testing
+# Use with VS Code REST Client or IntelliJ HTTP Client
+###
+
+### Variables
+@baseUrl = http://localhost:8080
+@memberId = testuser123
+@channel = WEB
+
+# Generate JWT using Python (run in terminal):
+# python3 -c "import hmac, hashlib, base64, json, time; secret = b'changeme-replace-with-a-long-random-string-in-production'; b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b'='); h = b64(json.dumps({'alg':'HS256','typ':'JWT'}).encode()); p = b64(json.dumps({'user_name':'testuser123','exp':int(time.time())+3600}).encode()); s = b64(hmac.new(secret, h+b'.'+p, hashlib.sha256).digest()); print((h+b'.'+p+b'.'+s).decode())"
+
+@jwt = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX25hbWUiOiJ0ZXN0dXNlcjEyMyIsImV4cCI6MTczNzc1NzY1MH0.kU0XhEJDOmLGSvQq4mHGWZYiRjCpS0CJOxjPY9rZhow
+
+### Health check
+GET {{baseUrl}}/health
+Accept: application/json
+
+### Info
+GET {{baseUrl}}/info
+Accept: application/json
+
+###############################################################################
+# Registration Flow (requires JWT)
+###############################################################################
+
+### 1. Registration Start
+# Returns: requestId + PublicKeyCredentialCreationOptions
+POST {{baseUrl}}/webauthn/v1/registration/start
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{
+  "memberId": "{{memberId}}",
+  "channel": "{{channel}}"
+}
+
+### 2. Registration Complete
+# NOTE: This requires a real authenticator response from navigator.credentials.create()
+# Cannot be tested with curl/REST client alone - use browser + Swagger UI
+POST {{baseUrl}}/webauthn/v1/registration/complete
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{
+  "requestId": "REPLACE_WITH_REQUEST_ID_FROM_START",
+  "credential": "REPLACE_WITH_BASE64_ATTESTATION_FROM_BROWSER",
+  "channel": "{{channel}}",
+  "memberId": "{{memberId}}",
+  "deviceType": "Desktop",
+  "webBrowser": "Chrome"
+}
+
+###############################################################################
+# Assertion Flow (no JWT required)
+###############################################################################
+
+### 3. Assertion Start (with memberId)
+# Returns: requestId + PublicKeyCredentialRequestOptions
+POST {{baseUrl}}/webauthn/v1/assertion/start
+Content-Type: application/json
+
+{
+  "memberId": "{{memberId}}",
+  "channel": "{{channel}}"
+}
+
+### 3b. Assertion Start (without memberId - allows any credential)
+POST {{baseUrl}}/webauthn/v1/assertion/start
+Content-Type: application/json
+
+{
+  "channel": "{{channel}}"
+}
+
+### 4. Assertion Complete
+# NOTE: This requires a real authenticator response from navigator.credentials.get()
+# Cannot be tested with curl/REST client alone - use browser + Swagger UI
+POST {{baseUrl}}/webauthn/v1/assertion/complete
+Content-Type: application/json
+
+{
+  "requestId": "REPLACE_WITH_REQUEST_ID_FROM_START",
+  "credential": "REPLACE_WITH_BASE64_ASSERTION_FROM_BROWSER"
+}
+
+###############################################################################
+# Credential Management
+###############################################################################
+
+### 5. List credentials (no auth)
+GET {{baseUrl}}/webauthn/v1/credentials?memberId={{memberId}}
+Accept: application/json
+
+### 6. Delete credentials v1 (JWT required)
+DELETE {{baseUrl}}/webauthn/v1/credentials?memberId={{memberId}}
+Authorization: Bearer {{jwt}}
+
+### 7. Delete credentials v2 (HTTP Basic auth)
+DELETE {{baseUrl}}/webauthn/v2/credentials?memberId={{memberId}}
+Authorization: Basic YWRtaW46Y2hhbmdlbWU=
+# Basic auth (admin:changeme) - base64(admin:changeme)
+
+###############################################################################
+# Dev Tools
+###############################################################################
+
+### H2 Console (browser only)
+# http://localhost:8080/h2-console
+# JDBC URL: jdbc:h2:mem:webauthndb
+# User: sa
+# Password: (leave empty)
+
+### Swagger UI (browser only)
+# http://localhost:8080/swagger-ui.html
+
+###############################################################################
+# Example: Full flow from Python (generate valid JWT with current timestamp)
+###############################################################################
+
+# Step 1: Generate a fresh JWT in Python
+# python3 -c "import hmac, hashlib, base64, json, time; secret = b'changeme-replace-with-a-long-random-string-in-production'; b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b'='); h = b64(json.dumps({'alg':'HS256','typ':'JWT'}).encode()); p = b64(json.dumps({'user_name':'testuser123','exp':int(time.time())+3600}).encode()); s = b64(hmac.new(secret, h+b'.'+p, hashlib.sha256).digest()); print((h+b'.'+p+b'.'+s).decode())"
+# Replace @jwt above with the output
+
+# Step 2: Execute "Registration Start" above
+# Step 3: Open Swagger UI and complete registration with a real browser authenticator
+# Step 4: Execute "List credentials" to verify it saved
+# Step 5: Execute "Assertion Start" to test login
+# Step 6: Complete assertion via Swagger UI with the same authenticator
