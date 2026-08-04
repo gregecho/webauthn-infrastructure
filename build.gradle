@@ -1,0 +1,116 @@
+plugins {
+    id 'org.springframework.boot' version '3.3.11'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'java'
+    id 'jacoco'
+}
+
+group = 'com.greg.webauthn'
+version = '1.0.0-SNAPSHOT'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    yubicoWebauthnServer = '2.5.2'
+    lombokVersion        = '1.18.30'
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // WebAuthn Relying Party
+    implementation "com.yubico:webauthn-server-core:${yubicoWebauthnServer}"
+    implementation "com.yubico:yubico-util:${yubicoWebauthnServer}"
+
+    // JWT — auth0 java-jwt
+    implementation 'com.auth0:java-jwt:4.4.0'
+
+    // OpenAPI / Swagger UI
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.1.0'
+
+    // Utilities
+    implementation 'org.apache.commons:commons-lang3:3.18.0'
+    implementation 'commons-codec:commons-codec:1.9'
+    implementation 'com.google.guava:guava:33.2.1-jre'
+
+    // Lombok
+    compileOnly     "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    // Database drivers — PostgreSQL at runtime, H2 for tests
+    runtimeOnly 'org.postgresql:postgresql'
+    runtimeOnly 'com.h2database:h2'
+
+    // Test
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testCompileOnly     "org.projectlombok:lombok:${lombokVersion}"
+    testAnnotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+}
+
+test {
+    useJUnitPlatform()
+    finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required  = true
+        html.required = true
+    }
+    // Exclude config, model, exception boilerplate from coverage
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it, excludes: [
+                'com/greg/webauthn/config/**',
+                'com/greg/webauthn/model/**',
+                'com/greg/webauthn/exception/**',
+                'com/greg/webauthn/Application.class'
+            ])
+        }))
+    }
+}
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            excludes = [
+                'com.greg.webauthn.config.*',
+                'com.greg.webauthn.model.*',
+                'com.greg.webauthn.exception.*',
+                'com.greg.webauthn.Application'
+            ]
+            limit {
+                minimum = 0.25
+            }
+        }
+    }
+}
+
+check.dependsOn jacocoTestCoverageVerification
+
+bootJar {
+    archiveFileName = 'webauthn-infrastructure.jar'
+}
+
+// Security CVE pins
+configurations.all {
+    resolutionStrategy.eachDependency { DependencyResolveDetails d ->
+        if (d.requested.group == 'ch.qos.logback') d.useVersion '1.5.18'
+        if (d.requested.group == 'org.apache.tomcat.embed') d.useVersion '10.1.44'
+        if (d.requested.group == 'org.springframework.security') d.useVersion '6.3.8'
+        if (d.requested.group == 'commons-io') d.useVersion '2.14.0'
+        if (d.requested.group == 'org.apache.commons' && d.requested.name == 'commons-lang3') d.useVersion '3.18.0'
+    }
+}
